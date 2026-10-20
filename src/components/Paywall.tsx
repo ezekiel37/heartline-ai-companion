@@ -14,6 +14,8 @@ const FEATURE_LABELS: Record<string, string> = {
   voice: "Voice messages",
 };
 
+const perDay = (p: Plan) => p.price_kobo / 100 / p.duration_days;
+
 // Paywall copy lives in the UI, never in the character's mouth (spec §3).
 export function Paywall({ plans, compact = true }: { plans: Plan[]; compact?: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -40,6 +42,10 @@ export function Paywall({ plans, compact = true }: { plans: Plan[]; compact?: bo
     setError(body.error ?? "Could not start payment.");
   }
 
+  // Highlight the cheapest plan per day, and lead with it in the in-chat paywall.
+  const best = plans.length > 1 ? plans.reduce((a, b) => (perDay(b) < perDay(a) ? b : a)) : null;
+  const ordered = compact && best ? [best, ...plans.filter((p) => p.id !== best.id)] : plans;
+
   return (
     <section className={compact ? "border-t border-border p-4" : ""}>
       {compact && (
@@ -48,16 +54,28 @@ export function Paywall({ plans, compact = true }: { plans: Plan[]; compact?: bo
           <p className="text-sm text-muted">Pick a plan to keep talking, or come back tomorrow for more free messages.</p>
         </div>
       )}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {plans.map((p) => {
-          const perDay = Math.round(p.price_kobo / 100 / p.duration_days);
+      <div className="grid gap-5 pt-2 sm:grid-cols-2">
+        {ordered.map((p) => {
+          const isBest = best?.id === p.id;
+          const extras = p.features.filter((f) => f !== "chat").map((f) => (FEATURE_LABELS[f] ?? f).toLowerCase());
           return (
-            <div key={p.id} className="card flex flex-col gap-3 p-4">
+            <div key={p.id} className={`card relative flex flex-col gap-3 p-4 ${isBest ? "border-2 border-accent" : ""}`}>
+              {isBest && (
+                <span className="absolute -top-3 left-4 rounded-full bg-accent px-3 py-0.5 text-xs font-semibold text-white">
+                  Best value
+                </span>
+              )}
               <div className="flex items-baseline justify-between">
                 <span className="font-semibold">{p.name}</span>
-                <span className="text-xs text-muted">≈ ₦{perDay}/day</span>
+                <span className="text-xs text-muted">≈ ₦{Math.round(perDay(p))}/day</span>
               </div>
               <div className="text-2xl font-bold">{formatNaira(p.price_kobo)}</div>
+              {compact && (
+                <p className="text-sm">
+                  Up to {p.daily_message_cap} messages a day, plus {extras.slice(0, 3).join(", ")}
+                  {extras.length > 3 ? " and more" : ""}.
+                </p>
+              )}
               <p className="text-xs text-muted">
                 {p.billing === "pass" ? "One-time payment. Doesn't auto-renew." : "Renews automatically. Cancel anytime."}
               </p>
@@ -69,7 +87,7 @@ export function Paywall({ plans, compact = true }: { plans: Plan[]; compact?: bo
                   ))}
                 </ul>
               )}
-              <button className="btn mt-auto" disabled={busy !== null} onClick={() => choose(p.id)}>
+              <button className={`${isBest ? "btn" : "btn-ghost"} mt-auto`} disabled={busy !== null} onClick={() => choose(p.id)}>
                 {busy === p.id ? "Opening Paystack…" : `Choose ${p.name}`}
               </button>
             </div>

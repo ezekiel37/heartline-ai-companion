@@ -1,4 +1,4 @@
-import { AppNav, LockedNotice } from "@/components/AppNav";
+import { AppNav, BottomTabs, LockedNotice } from "@/components/AppNav";
 import { loadPartnerState } from "@/lib/access";
 import { CATALOG, itemFitsGender } from "@/lib/avatar/catalog";
 import type { CoinPack } from "@/lib/plans";
@@ -22,7 +22,7 @@ export default async function ShopPage() {
   }));
 
   return (
-    <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
+    <main className="mx-auto max-w-5xl space-y-6 px-4 py-6 pb-24 md:pb-10">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Wardrobe shop</h1>
         <AppNav current="/shop" />
@@ -37,6 +37,7 @@ export default async function ShopPage() {
         avatar={s.avatar}
         partnerName={s.character.name}
       />
+      <BottomTabs current="/shop" />
     </main>
   );
 }

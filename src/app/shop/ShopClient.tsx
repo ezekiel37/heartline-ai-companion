@@ -2,10 +2,20 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Avatar } from "@/components/Avatar";
+import { Avatar, type AvatarCrop } from "@/components/Avatar";
 import type { CatalogItem } from "@/lib/avatar/catalog";
 import type { AvatarConfig } from "@/lib/avatar/config";
 import { formatNaira, type CoinPack } from "@/lib/plans";
+
+// Small items are invisible on a full-body thumbnail, so zoom in on where they're worn.
+const PREVIEW: Record<CatalogItem["slot"], { crop: AvatarCrop; size: number }> = {
+  top: { crop: "full", size: 130 },
+  bottom: { crop: "full", size: 130 },
+  dress: { crop: "full", size: 130 },
+  shoes: { crop: "feet", size: 190 },
+  accessory: { crop: "upper", size: 160 },
+  headwear: { crop: "upper", size: 160 },
+};
 
 export function ShopClient(props: {
   unlocked: boolean;
@@ -99,7 +109,9 @@ export function ShopClient(props: {
           const has = owned.has(item.id);
           return (
             <div key={item.id} className="card flex flex-col items-center gap-2 p-3">
-              <Avatar config={tryOn(item)} size={130} />
+              <div className="flex h-[208px] w-full items-center justify-center overflow-hidden rounded-2xl">
+                <Avatar config={tryOn(item)} crop={PREVIEW[item.slot].crop} size={PREVIEW[item.slot].size} className="rounded-2xl" />
+              </div>
               <div className="text-center text-sm font-medium">{item.name}</div>
               {has ? (
                 <span className="text-sm text-muted">Owned</span>

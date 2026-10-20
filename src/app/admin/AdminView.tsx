@@ -3,6 +3,13 @@ import { deriveMetrics, type RawMetrics } from "@/lib/admin/metrics";
 const naira = (n: number | null) => (n == null ? "—" : `₦${Math.round(n).toLocaleString("en-NG")}`);
 const pct = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)}%`);
 
+const PLAN_LABELS: Record<string, string> = { two_week: "2-week pass", monthly: "Monthly", six_month: "6-month", yearly: "Yearly" };
+const SAFETY_LABELS: Record<string, string> = {
+  crisis_detected: "Crisis messages",
+  "moderation_input:sexual_minors": "Blocked: minors",
+  "moderation_output:sexual_explicit": "Explicit replies cut off",
+};
+
 export function AdminView({ raw, ngnPerUsd }: { raw: RawMetrics; ngnPerUsd: number }) {
   const d = deriveMetrics(raw, ngnPerUsd);
 
@@ -29,7 +36,7 @@ export function AdminView({ raw, ngnPerUsd }: { raw: RawMetrics; ngnPerUsd: numb
         <Stat label="From plans" value={naira((raw.revenue_30d_by_kind.plan ?? 0) / 100)} />
         <Stat label="From coins" value={naira((raw.revenue_30d_by_kind.coins ?? 0) / 100)} />
         {Object.entries(raw.paying_by_plan).map(([plan, n]) => (
-          <Stat key={plan} label={`On ${plan}`} value={String(n)} />
+          <Stat key={plan} label={`On ${PLAN_LABELS[plan] ?? plan}`} value={String(n)} />
         ))}
       </Section>
 
@@ -79,7 +86,7 @@ export function AdminView({ raw, ngnPerUsd }: { raw: RawMetrics; ngnPerUsd: numb
       <Section title="Safety (7 days)">
         <Stat label="Reported messages" value={String(raw.reports_7d)} />
         {Object.entries(raw.safety_7d).map(([type, n]) => (
-          <Stat key={type} label={type.replace(/_/g, " ")} value={String(n)} />
+          <Stat key={type} label={SAFETY_LABELS[type] ?? type.replace(/[_:]/g, " ")} value={String(n)} />
         ))}
         <Stat label="Coins in wallets" value={raw.coins_outstanding.toLocaleString()} />
       </Section>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AppNav } from "@/components/AppNav";
+import { AppNav, BottomTabs } from "@/components/AppNav";
 import { Avatar } from "@/components/Avatar";
 import { GiftInbox, type UiGift } from "@/components/GiftInbox";
 import { Paywall } from "@/components/Paywall";
@@ -41,6 +41,7 @@ export function ChatClient(props: {
   const [showSupport, setShowSupport] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [coach, setCoach] = useState(false);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
 
   const locked = allowance.remaining <= 0;
@@ -114,6 +115,7 @@ export function ChatClient(props: {
   }
 
   async function report(id: string) {
+    setMenuFor(null);
     const reason = window.prompt("What was wrong with this message? (optional)") ?? "";
     const res = await fetch("/api/report", {
       method: "POST",
@@ -134,44 +136,70 @@ export function ChatClient(props: {
               <div className="text-xs text-muted">You&apos;re chatting with an AI</div>
             </div>
           </div>
-          <GiftInbox initial={props.gifts} partnerName={props.character.name} />
+          <div className="flex items-center gap-3">
+            <AppNav current="/chat" />
+            <GiftInbox initial={props.gifts} partnerName={props.character.name} />
+          </div>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <AppNav current="/chat" />
-          {allowance.tier === "free" && (
-            <span className="rounded-full bg-accent-soft px-3 py-1 text-xs" aria-live="polite">
-              {allowance.remaining} of {allowance.limit} free messages left today
-            </span>
-          )}
-        </div>
+        {allowance.tier === "free" && (
+          <div className="text-xs text-muted" aria-live="polite">
+            <span className="rounded-full bg-accent-soft px-2.5 py-1 font-medium text-foreground">
+              {allowance.remaining} of {allowance.limit}
+            </span>{" "}
+            free messages left today
+          </div>
+        )}
       </header>
 
       <main className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <p className="mt-10 text-center text-muted">Say hi to {props.character.name} 👋</p>
         )}
-        {messages.map((m) => (
-          <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className="group max-w-[85%]">
+        {messages.map((m, i) => {
+          const mine = m.role === "user";
+          // Show the partner's face on the last of a run of consecutive replies.
+          const showFace = !mine && messages[i + 1]?.role !== "assistant";
+          const canReport = !mine && m.content && !m.id.startsWith("local-");
+          return (
+            <div key={m.id} className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}>
+              {!mine && (
+                <div className="w-8 shrink-0">
+                  {showFace && <Avatar config={props.avatar} crop="head" size={32} className="rounded-full" />}
+                </div>
+              )}
               <div
-                className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 ${
-                  m.role === "user" ? "bg-accent text-white" : "border border-border bg-card"
+                className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 ${
+                  mine ? "bg-accent text-white" : "border border-border bg-card"
                 }`}
               >
                 {m.content || <span className="text-muted">typing…</span>}
               </div>
-              {m.role === "assistant" && m.content && !m.id.startsWith("local-") && (
-                <button
-                  onClick={() => report(m.id)}
-                  disabled={m.reported}
-                  className="mt-1 text-xs text-muted opacity-70 hover:opacity-100 disabled:opacity-60"
-                >
-                  {m.reported ? "Reported — thank you" : "Report"}
-                </button>
+              {canReport && (
+                <div className="relative self-center">
+                  {m.reported ? (
+                    <span className="text-xs text-muted" title="Reported">⚑</span>
+                  ) : (
+                    <button
+                      onClick={() => setMenuFor(menuFor === m.id ? null : m.id)}
+                      className="rounded-full px-1.5 text-muted opacity-60 hover:opacity-100"
+                      aria-label="Message options"
+                      aria-expanded={menuFor === m.id}
+                    >
+                      ⋯
+                    </button>
+                  )}
+                  {menuFor === m.id && (
+                    <div className="absolute right-0 top-7 z-10 w-40 rounded-xl border border-border bg-card p-1 text-sm shadow-lg">
+                      <button onClick={() => report(m.id)} className="w-full rounded-lg px-3 py-2 text-left hover:bg-accent-soft">
+                        Report message
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-          </div>
-        ))}
+          );
+        })}
         {showSupport && <SupportCard onClose={() => setShowSupport(false)} />}
         <div ref={bottom} />
       </main>
@@ -208,6 +236,7 @@ export function ChatClient(props: {
         </form>
       )}
       {notice && !paywalled && <p className="px-4 pb-3 text-sm text-accent">{notice}</p>}
+      <BottomTabs current="/chat" fixed={false} />
     </div>
   );
 }

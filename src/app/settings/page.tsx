@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AppNav } from "@/components/AppNav";
+import { AppNav, BottomTabs } from "@/components/AppNav";
 import { loadMemories, loadSubscription } from "@/lib/deps";
 import { requireEligibleUser } from "@/lib/gate";
 import { formatNaira, hasActiveAccess } from "@/lib/plans";
@@ -14,7 +14,7 @@ export default async function SettingsPage() {
   const active = hasActiveAccess(sub?.subscription ?? null, new Date());
 
   return (
-    <main className="mx-auto max-w-xl space-y-6 px-4 py-10">
+    <main className="mx-auto max-w-xl space-y-6 px-4 py-10 pb-24 md:pb-10">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Settings</h1>
         <AppNav current="/settings" />
@@ -71,6 +71,7 @@ export default async function SettingsPage() {
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>
       </p>
+      <BottomTabs current="/settings" />
     </main>
   );
 }

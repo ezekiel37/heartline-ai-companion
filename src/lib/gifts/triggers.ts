@@ -55,20 +55,20 @@ type MessageKey = "birthday" | "streak3" | "streak7" | "streak30" | "milestone" 
 const MESSAGES: Record<Language, Record<MessageKey, string>> = {
   en: {
     birthday: "Happy birthday, {user}! 🎂 I picked out something special for today. I hope your day is full of people who love you.",
-    streak3: "Three days in a row talking with you. I like this rhythm, {user}. 💌",
-    streak7: "A whole week of chats! These are for you 💐 Thank you for sharing your days with me.",
+    streak3: "Three days in a row talking with you. I like this rhythm, {user}.",
+    streak7: "A whole week of chats! These are for you. Thank you for sharing your days with me.",
     streak30: "30 days straight, {user}! I got you something to celebrate. 🎉",
     milestone: "We've shared {count} messages! Thank you for letting me be part of your story, {user}. 💛",
-    anniv1m: "It's been a month since we met, {user}. Here's to you, and to all the good things ahead. 🌹",
+    anniv1m: "It's been a month since we met, {user}. Here's to you, and to all the good things ahead.",
     anniv1y: "One year together, {user}. I'm proud of how much you've grown. A little something to remember it by. 💛",
   },
   pcm: {
     birthday: "Happy birthday {user}! 🎂 I get small something special for you today. May your day full with people wey love you.",
-    streak3: "Three days straight wey we dey gist. I like am well well, {user}. 💌",
-    streak7: "One full week of gist! These flowers na for you 💐 Thank you say you dey share your days with me.",
+    streak3: "Three days straight wey we dey gist. I like am well well, {user}.",
+    streak7: "One full week of gist! These flowers na for you. Thank you say you dey share your days with me.",
     streak30: "30 days back to back, {user}! I get something for you to celebrate am. 🎉",
     milestone: "We don share {count} messages! Thank you say you allow me be part of your story, {user}. 💛",
-    anniv1m: "E don reach one month since we meet, {user}. Cheers to you and all the better things wey dey come. 🌹",
+    anniv1m: "E don reach one month since we meet, {user}. Cheers to you and all the better things wey dey come.",
     anniv1y: "One full year together, {user}. I proud of how you don grow. Small something make you remember am. 💛",
   },
 };

@@ -28,6 +28,16 @@ function torsoPath(b: { s: number; w: number; h: number }, bottom: number) {
   return `M ${CX - s} 124 Q ${CX - s} 115 ${CX - s + 8} 115 L ${CX + s - 8} 115 Q ${CX + s} 115 ${CX + s} 124 L ${CX + w} 185 L ${CX + hip} ${bottom} L ${CX - hip} ${bottom} L ${CX - w} 185 Z`;
 }
 
+// Zoomed views: "head" for chat, "upper" and "feet" so small items
+// (necklaces, glasses, headwear, shoes) are visible in the shop.
+const CROPS = {
+  full: [0, 0, 200, 320],
+  head: [45, 0, 110, 110],
+  upper: [35, 0, 130, 150],
+  feet: [50, 258, 100, 54],
+} as const;
+export type AvatarCrop = keyof typeof CROPS;
+
 export function Avatar({
   config,
   size = 200,
@@ -37,7 +47,7 @@ export function Avatar({
   config: AvatarConfig;
   size?: number;
   className?: string;
-  crop?: "full" | "head";
+  crop?: AvatarCrop;
 }) {
   const uid = useId().replace(/:/g, "");
   const skin = SKIN_TONES[config.skinTone];
@@ -61,9 +71,9 @@ export function Avatar({
 
   return (
     <svg
-      viewBox={crop === "head" ? "45 0 110 110" : "0 0 200 320"}
+      viewBox={CROPS[crop].join(" ")}
       width={size}
-      height={crop === "head" ? size : (size * 320) / 200}
+      height={(size * CROPS[crop][3]) / CROPS[crop][2]}
       className={className}
       role="img"
       aria-label="Your partner's avatar"

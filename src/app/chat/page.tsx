@@ -1,32 +1,40 @@
+import { loadPartnerState } from "@/lib/access";
 import { decrypt } from "@/lib/crypto";
-import { loadSubscription } from "@/lib/deps";
-import { requireEligibleUser } from "@/lib/gate";
+import { giftDeps } from "@/lib/deps";
+import { runGiftTriggers } from "@/lib/gifts/triggers";
 import { dailyAllowance, type Plan } from "@/lib/plans";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import { appDate } from "@/lib/time";
-import { ChatClient, type UiMessage } from "./ChatClient";
+import { ChatClient, type UiGift, type UiMessage } from "./ChatClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function ChatPage() {
-  const { supabase, user, profile, character } = await requireEligibleUser({ needCharacter: true });
+  const s = await loadPartnerState();
+  const { supabase, user, profile, character } = s;
   const now = new Date();
   const today = appDate(now);
 
-  const [{ data: rows }, sub, { data: usage }, { data: plans }] = await Promise.all([
+  // Birthday and anniversary gifts should be waiting when the user opens the app.
+  if (s.features.has("gifts")) {
+    await runGiftTriggers(giftDeps(supabaseAdmin()), user.id).catch((e) => console.error("gift triggers failed", e));
+  }
+
+  const [{ data: rows }, { data: usage }, { data: plans }, { data: gifts }] = await Promise.all([
     supabase
       .from("messages")
       .select("id, role, content")
-      .eq("character_id", character!.id)
+      .eq("character_id", character.id)
       .order("created_at", { ascending: false })
       .limit(50),
-    loadSubscription(supabase, user.id),
     supabase.from("usage").select("messages_used").eq("user_id", user.id).eq("usage_date", today).maybeSingle(),
     supabase.from("plans").select("*").order("sort"),
+    supabase.from("gifts").select("id, kind, item_id, coins, message, sent_at, opened").eq("user_id", user.id).order("sent_at", { ascending: false }).limit(20),
   ]);
 
   const allowance = dailyAllowance({
-    subscription: sub?.subscription ?? null,
-    plan: sub?.plan ?? null,
+    subscription: s.subscription?.subscription ?? null,
+    plan: s.subscription?.plan ?? null,
     accountCreatedDate: appDate(new Date(profile!.created_at)),
     today,
     now,
@@ -39,10 +47,13 @@ export default async function ChatPage() {
 
   return (
     <ChatClient
-      character={{ name: character!.name, gender: character!.gender }}
+      character={{ name: character.name, gender: s.gender }}
+      avatar={s.avatar}
       initialMessages={messages}
       initialAllowance={{ tier: allowance.tier, limit: allowance.limit, remaining: Math.max(allowance.limit - used, 0) }}
       plans={(plans ?? []) as Plan[]}
+      gifts={(gifts ?? []) as UiGift[]}
+      coachAvailable={s.features.has("coach")}
     />
   );
 }

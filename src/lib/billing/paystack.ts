@@ -64,7 +64,7 @@ export interface PaystackCharge {
   status: string;
   amount: number;
   currency: string;
-  metadata?: { user_id?: string; plan_id?: string } | string | null;
+  metadata?: { user_id?: string; plan_id?: string; kind?: "plan" | "coins"; pack_id?: string } | string | null;
   customer?: { customer_code?: string; email?: string };
   plan?: { plan_code?: string } | string | null;
 }

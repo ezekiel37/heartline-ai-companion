@@ -1,7 +1,10 @@
 import type { ChatRequest, ChatStream, LlmProvider } from "./types";
 
 // Deterministic provider for local development without an API key, and for tests.
-export function mockProvider(reply = "I'm here for you. Tell me more about your day? 💛"): LlmProvider {
+export function mockProvider(
+  reply = "I'm here for you. Tell me more about your day? 💛",
+  completion = '{"facts": []}',
+): LlmProvider {
   return {
     name: "mock",
     model: "mock",
@@ -21,6 +24,12 @@ export function mockProvider(reply = "I'm here for you. Tell me more about your 
           refused: false,
         }),
         abort: () => {},
+      };
+    },
+    async complete() {
+      return {
+        text: completion,
+        usage: { model: "mock", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, refused: false },
       };
     },
   };

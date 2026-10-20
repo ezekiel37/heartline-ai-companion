@@ -47,6 +47,7 @@ describe("free message limit", () => {
           usage: () => Promise.reject(new Error("no")),
           abort: () => {},
         }),
+        complete: () => Promise.reject(new Error("no")),
       },
     });
     const res = await handleChat(deps, USER, "hi");

@@ -25,11 +25,22 @@ export function costUsd(u: ChatUsage): number {
   );
 }
 
+// The chat model talks to users; the utility model does background work such
+// as memory extraction. They default to the same model; set
+// LLM_UTILITY_MODEL to a cheaper one if quality holds.
 export function getLlm(): LlmProvider {
-  const provider = process.env.LLM_PROVIDER ?? "anthropic";
+  return makeProvider(process.env.LLM_MODEL || "claude-opus-5-5");
+}
+
+export function getUtilityLlm(): LlmProvider {
+  return makeProvider(process.env.LLM_UTILITY_MODEL || process.env.LLM_MODEL || "claude-opus-5-5");
+}
+
+function makeProvider(model: string): LlmProvider {
+  const provider = process.env.LLM_PROVIDER || "anthropic";
   switch (provider) {
     case "anthropic":
-      return anthropicProvider(process.env.LLM_MODEL ?? "claude-opus-5-5");
+      return anthropicProvider(model);
     case "mock":
       return mockProvider();
     default:

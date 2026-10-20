@@ -1,4 +1,4 @@
-import type { Plan, Subscription, SubscriptionStatus } from "../plans";
+import type { CoinPack, Plan, Subscription, SubscriptionStatus } from "../plans";
 import { verifySignature, type PaystackCharge, type PaystackEvent } from "./paystack";
 
 // Turns Paystack events into `subscriptions` rows. Pure apart from `deps`, so
@@ -22,6 +22,11 @@ export interface WebhookDeps {
   claimEvent(key: string, event: string): Promise<boolean>;
   // Undo a claim when applying the event failed, so Paystack's retry can succeed.
   releaseEvent(key: string): Promise<void>;
+  getCoinPack(id: string): Promise<CoinPack | null>;
+  // Idempotent on `ref`.
+  creditCoins(userId: string, amount: number, reason: string, ref: string): Promise<void>;
+  // Idempotent on `reference`.
+  recordPayment(p: { userId: string; reference: string; kind: "plan" | "coins"; itemId: string; amountKobo: number }): Promise<void>;
 }
 
 export type WebhookOutcome =
@@ -62,7 +67,14 @@ export async function handlePaystackWebhook(
   }
 }
 
-function metadataOf(charge: PaystackCharge): { user_id?: string; plan_id?: string } {
+interface ChargeMetadata {
+  user_id?: string;
+  plan_id?: string;
+  kind?: "plan" | "coins";
+  pack_id?: string;
+}
+
+function metadataOf(charge: PaystackCharge): ChargeMetadata {
   if (!charge.metadata) return {};
   if (typeof charge.metadata === "string") {
     try {
@@ -81,6 +93,7 @@ export async function applyCharge(deps: WebhookDeps, charge: PaystackCharge): Pr
   if (charge.currency !== "NGN") return "wrong_currency";
 
   const meta = metadataOf(charge);
+  if (meta.kind === "coins") return applyCoinCharge(deps, charge, meta);
   const planCode = typeof charge.plan === "object" ? charge.plan?.plan_code : undefined;
 
   let plan = meta.plan_id ? await deps.getPlanById(meta.plan_id) : null;
@@ -113,11 +126,33 @@ export async function applyCharge(deps: WebhookDeps, charge: PaystackCharge): Pr
       paystack_ref: charge.reference,
       paystack_customer_code: charge.customer?.customer_code ?? existing?.paystack_customer_code ?? null,
     });
+    await deps.recordPayment({ userId, reference: charge.reference, kind: "plan", itemId: plan.id, amountKobo: charge.amount });
+    if (plan.bonus_coins) {
+      await deps.creditCoins(userId, plan.bonus_coins, `plan_bonus:${plan.id}`, `bonus:${charge.reference}`);
+    }
   } catch (e) {
     await deps.releaseEvent(key);
     throw e;
   }
   return "activated";
+}
+
+async function applyCoinCharge(deps: WebhookDeps, charge: PaystackCharge, meta: ChargeMetadata): Promise<string> {
+  if (!meta.user_id || !meta.pack_id) return "bad_metadata";
+  const pack = await deps.getCoinPack(meta.pack_id);
+  if (!pack) return "unknown_pack";
+  if (charge.amount < pack.price_kobo) return "amount_mismatch";
+
+  const key = `charge:${charge.reference}`;
+  if (!(await deps.claimEvent(key, "charge.success"))) return "duplicate";
+  try {
+    await deps.creditCoins(meta.user_id, pack.coins, `pack:${pack.id}`, `pack:${charge.reference}`);
+    await deps.recordPayment({ userId: meta.user_id, reference: charge.reference, kind: "coins", itemId: pack.id, amountKobo: charge.amount });
+  } catch (e) {
+    await deps.releaseEvent(key);
+    throw e;
+  }
+  return "coins_credited";
 }
 
 async function applySubscriptionCreate(deps: WebhookDeps, data: Record<string, unknown>): Promise<string> {

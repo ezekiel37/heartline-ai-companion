@@ -1,22 +1,24 @@
 import Link from "next/link";
-import { loadSubscription } from "@/lib/deps";
+import { AppNav } from "@/components/AppNav";
+import { loadMemories, loadSubscription } from "@/lib/deps";
 import { requireEligibleUser } from "@/lib/gate";
 import { formatNaira, hasActiveAccess } from "@/lib/plans";
-import { DeleteAccount, LanguageSwitch } from "./SettingsClient";
+import { DeleteAccount, LanguageSwitch, MemoryList } from "./SettingsClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const { supabase, user, profile } = await requireEligibleUser({ needCharacter: false });
+  const { supabase, user, profile, character } = await requireEligibleUser({ needCharacter: false });
   const sub = await loadSubscription(supabase, user.id);
+  const memories = character ? await loadMemories(supabase, character.id) : [];
   const active = hasActiveAccess(sub?.subscription ?? null, new Date());
 
   return (
     <main className="mx-auto max-w-xl space-y-6 px-4 py-10">
-      <Link href="/chat" className="text-sm text-muted">
-        ← Back to chat
-      </Link>
-      <h1 className="text-2xl font-bold">Settings</h1>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold">Settings</h1>
+        <AppNav current="/settings" />
+      </header>
 
       <section className="card space-y-2">
         <h2 className="font-semibold">Plan</h2>
@@ -36,6 +38,17 @@ export default async function SettingsPage() {
         <h2 className="font-semibold">Language</h2>
         <LanguageSwitch initial={profile!.language as "en" | "pcm"} />
       </section>
+
+      {character && (
+        <section className="card space-y-3">
+          <h2 className="font-semibold">What {character.name} remembers</h2>
+          <p className="text-sm text-muted">
+            {character.name} remembers things you share so conversations feel personal. Remove anything you don&apos;t
+            want remembered.
+          </p>
+          <MemoryList initial={memories.map((m) => ({ id: m.id, fact: m.fact }))} />
+        </section>
+      )}
 
       <section className="card space-y-3">
         <h2 className="font-semibold">Account</h2>

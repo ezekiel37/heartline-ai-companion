@@ -1,11 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import type { ChatEvent } from "@/lib/chat/handleChat";
-import type { Plan } from "@/lib/plans";
+import { AppNav } from "@/components/AppNav";
+import { Avatar } from "@/components/Avatar";
+import { GiftInbox, type UiGift } from "@/components/GiftInbox";
 import { Paywall } from "@/components/Paywall";
 import { SupportCard } from "@/components/SupportCard";
+import type { AvatarConfig } from "@/lib/avatar/config";
+import type { ChatEvent } from "@/lib/chat/handleChat";
+import type { Plan } from "@/lib/plans";
+
+export type { UiGift };
 
 export interface UiMessage {
   id: string;
@@ -22,9 +27,12 @@ interface Allowance {
 
 export function ChatClient(props: {
   character: { name: string; gender: string };
+  avatar: AvatarConfig;
   initialMessages: UiMessage[];
   initialAllowance: Allowance;
   plans: Plan[];
+  gifts: UiGift[];
+  coachAvailable: boolean;
 }) {
   const [messages, setMessages] = useState<UiMessage[]>(props.initialMessages);
   const [allowance, setAllowance] = useState<Allowance>(props.initialAllowance);
@@ -32,6 +40,7 @@ export function ChatClient(props: {
   const [sending, setSending] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [coach, setCoach] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
 
   const locked = allowance.remaining <= 0;
@@ -55,7 +64,7 @@ export function ChatClient(props: {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, mode: coach ? "coach" : "chat" }),
       });
 
       if (!res.ok) {
@@ -116,20 +125,24 @@ export function ChatClient(props: {
 
   return (
     <div className="mx-auto flex h-dvh max-w-2xl flex-col">
-      <header className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div>
-          <div className="font-semibold">{props.character.name}</div>
-          <div className="text-xs text-muted">You&apos;re chatting with an AI</div>
+      <header className="space-y-2 border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Avatar config={props.avatar} crop="head" size={44} className="rounded-full" />
+            <div>
+              <div className="font-semibold">{props.character.name}</div>
+              <div className="text-xs text-muted">You&apos;re chatting with an AI</div>
+            </div>
+          </div>
+          <GiftInbox initial={props.gifts} partnerName={props.character.name} />
         </div>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <AppNav current="/chat" />
           {allowance.tier === "free" && (
             <span className="rounded-full bg-accent-soft px-3 py-1 text-xs" aria-live="polite">
               {allowance.remaining} of {allowance.limit} free messages left today
             </span>
           )}
-          <Link href="/settings" className="text-muted hover:text-foreground" aria-label="Settings">
-            Settings
-          </Link>
         </div>
       </header>
 
@@ -166,13 +179,25 @@ export function ChatClient(props: {
       {paywalled ? (
         <Paywall plans={props.plans} />
       ) : (
-        <form onSubmit={send} className="flex gap-2 border-t border-border p-3">
+        <form onSubmit={send} className="flex flex-wrap gap-2 border-t border-border p-3">
           {notice && <p className="sr-only" role="alert">{notice}</p>}
+          {props.coachAvailable && (
+            <label className="flex w-full cursor-pointer items-center gap-2 text-xs text-muted">
+              <input type="checkbox" checked={coach} onChange={(e) => setCoach(e.target.checked)} />
+              Coach mode: ask {props.character.name} for honest dating and relationship advice
+            </label>
+          )}
           <input
-            className="input"
+            className="input min-w-0 flex-1"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={locked ? "You've reached today's limit. It resets at midnight." : `Message ${props.character.name}…`}
+            placeholder={
+              locked
+                ? "You've reached today's limit. It resets at midnight."
+                : coach
+                  ? "What do you need advice on?"
+                  : `Message ${props.character.name}…`
+            }
             disabled={locked}
             maxLength={2000}
             aria-label="Message"

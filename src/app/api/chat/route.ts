@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { handleChat } from "@/lib/chat/handleChat";
 import { chatDeps } from "@/lib/deps";
 import { requireUser, supabaseAdmin } from "@/lib/supabase/server";
@@ -11,7 +12,8 @@ export async function POST(req: Request) {
   if (!user) return Response.json({ error: "Not signed in" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const result = await handleChat(chatDeps(supabaseAdmin()), user.id, body?.text);
+  const mode = body?.mode === "coach" ? "coach" : "chat";
+  const result = await handleChat(chatDeps(supabaseAdmin()), user.id, body?.text, { mode });
 
   if (!result.ok) {
     return Response.json(
@@ -29,6 +31,9 @@ export async function POST(req: Request) {
       controller.close();
     },
   });
+
+  // Memory extraction and gift triggers run once the reply has been sent.
+  after(() => result.runBackground());
 
   return new Response(stream, {
     headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" },

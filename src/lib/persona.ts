@@ -53,6 +53,18 @@ export function buildSystemPrompt(args: {
   ].join("\n\n");
 }
 
+// Coach mode: the user explicitly asked for advice rather than chat.
+export const COACH_INSTRUCTION =
+  "Coach mode is on for this reply: the user wants real advice about love, dating, confidence or relationships. Stay warm and in character, but be a straight-talking coach. Ask a clarifying question if the situation is unclear. Otherwise give an honest view (including where the user might be wrong), 2 to 4 concrete next steps they can take in real life, and point out red flags plainly. Encourage real-world connection. You may write a little longer than usual, but keep it readable on a phone.";
+
+export function recentGiftsNote(gifts: { kind: string; message: string }[]): string {
+  if (!gifts.length) return "";
+  return [
+    "Gifts you sent the user in the last few days (you can mention them warmly if it fits; never ask for anything in return):",
+    ...gifts.map((g) => `- ${g.kind}: "${g.message.slice(0, 120)}"`),
+  ].join("\n");
+}
+
 // Appended as a turn-level instruction when crisis detection fires.
 export const CRISIS_INSTRUCTION =
   "Safety note for this reply: the user's latest message may indicate thoughts of self-harm or suicide. Put the romance aside. Respond with calm, genuine care. Acknowledge what they said, ask if they are safe right now, and encourage them to contact someone they trust or a helpline (the app is showing them helpline numbers). Do not lecture, do not give any methods, and do not leave them feeling judged.";

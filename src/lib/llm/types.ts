@@ -32,4 +32,6 @@ export interface LlmProvider {
   name: string;
   model: string;
   stream(req: ChatRequest): ChatStream;
+  // Non-streaming call for background utility work (e.g. memory extraction).
+  complete(req: ChatRequest): Promise<{ text: string; usage: ChatUsage }>;
 }

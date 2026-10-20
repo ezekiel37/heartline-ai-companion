@@ -13,6 +13,7 @@ export interface Plan {
   billing: BillingType;
   paystack_plan_code: string | null;
   daily_message_cap: number;
+  bonus_coins?: number; // credited on every successful charge
   features: string[];
   active: boolean;
   sort: number;
@@ -56,11 +57,31 @@ export const DEFAULT_PLANS: Plan[] = [
     billing: "recurring",
     paystack_plan_code: null, // set from PAYSTACK_PLAN_MONTHLY / plans table
     daily_message_cap: 100,
+    bonus_coins: 150,
     features: ["chat", "memory", "avatar_studio", "wardrobe", "gifts", "bonus_coins"],
     active: true,
     sort: 2,
   },
 ];
+
+export interface CoinPack {
+  id: string;
+  name: string;
+  coins: number;
+  price_kobo: number;
+  active: boolean;
+  sort: number;
+}
+
+export const DEFAULT_COIN_PACKS: CoinPack[] = [
+  { id: "coins_100", name: "100 coins", coins: 100, price_kobo: 50_000, active: true, sort: 1 },
+  { id: "coins_250", name: "250 coins", coins: 250, price_kobo: 100_000, active: true, sort: 2 },
+  { id: "coins_700", name: "700 coins", coins: 700, price_kobo: 250_000, active: true, sort: 3 },
+];
+
+// Spending guardrail: companion apps attract emotionally attached users, so
+// cap coin purchases per day. Plans are not affected.
+export const MAX_COIN_SPEND_KOBO_PER_DAY = 1_000_000; // ₦10,000
 
 export function formatNaira(kobo: number): string {
   return `₦${(kobo / 100).toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;

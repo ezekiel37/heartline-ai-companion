@@ -1,4 +1,4 @@
-# Heartline: AI companion app (Phase 1)
+# Heartline: AI companion app
 
 "A partner who helps you get ready for real love." An AI boyfriend or girlfriend who also coaches users on dating
 and relationships. Africa-first: Nigerian context, Pidgin support, Naira pricing via Paystack.
@@ -31,8 +31,8 @@ provider-agnostic wrapper (`src/lib/llm.ts`) · Paystack · Vercel.
 ## Setup
 
 1. **Install:** `npm install`
-2. **Supabase:** create a project, then run `supabase/migrations/0001_phase1.sql` in the SQL editor (or use
-   `supabase db push`).
+2. **Supabase:** create a project, then run `supabase/migrations/0001_phase1.sql` and then
+   `0002_phase2.sql` in the SQL editor (or use `supabase db push`).
    * Auth → Providers: enable Email and Google.
    * Auth → URL configuration: add `http://localhost:3000/auth/callback` and your production `/auth/callback` URL.
 3. **Paystack:**
@@ -55,7 +55,10 @@ provider-agnostic wrapper (`src/lib/llm.ts`) · Paystack · Vercel.
 | `LLM_PROVIDER` | `anthropic` or `mock` | `mock` gives canned replies, no key needed |
 | `ANTHROPIC_API_KEY` | console.anthropic.com | |
 | `LLM_MODEL` | see Cost control | Default `claude-opus-5-5` |
+| `LLM_UTILITY_MODEL` | optional | Model for memory extraction. Defaults to `LLM_MODEL` |
 | `PAYSTACK_SECRET_KEY` | Paystack → API Keys | Also used to verify webhook signatures |
+| `ADMIN_EMAILS` | you | Comma-separated emails that can open `/admin` |
+| `NGN_PER_USD` | current rate | Used to show AI costs in Naira on `/admin`. Default 1500 |
 
 ## Tests
 
@@ -65,7 +68,11 @@ npm test
 
 Covers the four required areas: the free message limit (`tests/freeLimit.test.ts`), the paywall lock
 (`tests/paywall.test.ts`), webhook subscription updates (`tests/webhook.test.ts`) and the crisis detection trigger
-(`tests/crisis.test.ts`). It also covers moderation, the age gate, encryption and the persona rules. The core logic
+(`tests/crisis.test.ts`). It also covers moderation, the age gate, encryption and the persona rules.
+
+Phase 2 tests: memory extraction and retrieval (`memory.test.ts`), gift triggers (`gifts.test.ts`), coin
+purchases and bonus coins (`coins.test.ts`), the wardrobe shop and avatar studio (`shop.test.ts`, which also checks
+that the catalogue matches the database seed), and the admin metrics (`admin.test.ts`). The core logic
 (`handleChat`, `handlePaystackWebhook`) takes its database and LLM as injected dependencies, so tests run against
 in-memory fakes with no network calls.
 
@@ -96,9 +103,57 @@ in-memory fakes with no network calls.
   * "Delete my account" cancels the Paystack subscription and then deletes the auth user. Every table cascades from
     `auth.users`, so all of the user's data is hard-deleted.
 
+## Phase 2 features
+
+| Feature | Who gets it | Where |
+|---|---|---|
+| Long-term memory | Everyone (see note) | `src/lib/memory/`, Settings → "What X remembers" |
+| Coach mode | Everyone | Toggle above the chat input |
+| Avatar studio | Paid plans | `/studio`, `src/components/Avatar.tsx` |
+| Wardrobe shop and coins | Paid plans | `/shop`, `purchase_item` / `credit_coins` SQL functions |
+| Gifts from the character | Paid plans | `src/lib/gifts/triggers.ts`, 🎁 in the chat header |
+| Admin dashboard | `ADMIN_EMAILS` | `/admin`, `admin_metrics()` SQL function |
+
+* **Memory.** After a reply, a background call pulls durable facts out of the user's message and stores them
+  encrypted. Messages that don't talk about the user are skipped, and crisis messages are never turned into memories.
+  The most relevant facts (up to 15) go into the prompt. Users can see and delete every memory in Settings, and each
+  partner keeps at most 100.
+  * Memory is on for free users too: being remembered is what makes people pay, and the free tier allows only 3
+    messages a day, so the extra cost is small. Set `MEMORY_FOR_FREE_USERS = false` in `src/lib/features.ts` to make it
+    paid-only, as the original spec had it.
+* **Coach mode** is free because it is the product's positioning ("helps you get ready for real love").
+* **Avatars** are layered SVG drawn in code, so there are no image assets to make. Choices:
+  * 6 skin tones (darkest first), 9 hairstyles including afro, braids, locs and puff, and 4 body types.
+  * Outfits including ankara prints, kaftans, gele and fila.
+  * Empty clothing slots fall back to neutral basics, so the avatar is always fully clothed.
+* **Coins:**
+  * Packs cost ₦500, ₦1,000 and ₦2,500, and bigger packs give more coins per Naira.
+  * Monthly subscribers get 150 bonus coins on every charge.
+  * Coin purchases are capped at **₦10,000 per user per day**. Companion apps attract emotionally attached users;
+    this cap is a deliberate guardrail.
+  * Coins are only sold to users on a plan that includes the wardrobe.
+  * Every credit and purchase is in an append-only ledger, and replayed webhooks can't credit twice.
+* **Gifts** are always free:
+  * Triggers: 3-, 7- and 30-day streaks, the user's birthday (from their date of birth; 29 February falls back to
+    28 February), 100/500/1,000 messages, and the 1-month and 1-year anniversaries.
+  * Each gift is unique per trigger, so re-checking is safe.
+  * Outfit gifts the user already owns become coins instead.
+  * The character can mention recent gifts but is told never to ask for anything back.
+* **Background work** (memory extraction and gift checks) runs after the reply has been sent, using Next.js
+  `after()`, so it doesn't slow down chat.
+
+### Deferred from Phase 3 (deliberately)
+
+* **Voice (TTS):** text-to-speech for each reply would likely cost more than the reply itself. Add it only once
+  `/admin` shows healthy margins, and as a paid add-on.
+* **Native app:** the web app is mobile-first and works on phones. A React Native app is worth building once you
+  have retention and conversion data, not before.
+
 ## Cost control
 
-Every assistant message stores `input_tokens`, `output_tokens`, `cache_read_tokens` and `cost_usd`. Cost per user:
+Every assistant message stores `input_tokens`, `output_tokens`, `cache_read_tokens` and `cost_usd`, and background
+calls (memory extraction) are logged in `llm_usage`. `/admin` shows cost per paying user and gross margin after AI
+costs. You can also query it directly:
 
 ```sql
 select user_id, sum(cost_usd) as usd, count(*) as replies
@@ -127,6 +182,11 @@ the last 20 messages, prompt caching is on, and replies run at low effort.
 * **Age gate is self-declared.** A blocked minor can sign up again with a new email and a false DOB. Plug in an age
   verification provider later.
 * **Legal:** privacy and terms pages are placeholders for a lawyer to review (NDPA).
-* **Not yet tested end to end** against a live Supabase project and Paystack test mode. The SQL migration was run and
-  checked on Postgres 16 with a stubbed `auth` schema.
-* **Phase 2 is not built:** long-term memory, avatar studio, wardrobe and coins, gifts, coaching mode UI.
+* **Not yet tested end to end** against a live Supabase project and Paystack test mode. Both SQL migrations were
+  run and checked on Postgres 16 with a stubbed `auth` schema (limits, RLS, coin ledger, purchases, cascading
+  deletes).
+* **Payment records are deleted with the account.** Nigerian tax rules may require keeping financial records for
+  several years. Ask your lawyer whether `payments` should be anonymised instead of deleted.
+* **Memory retrieval is keyword-based.** It works well up to the 100-fact cap; move to embeddings if you raise the cap.
+* **Gift checks run during chat and on opening the chat page**, not on a schedule, so a birthday gift arrives when
+  the user next opens the app. Add a daily cron job if you want push notifications.

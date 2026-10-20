@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED = ["/chat", "/onboarding", "/settings", "/billing"];
+const PROTECTED = ["/chat", "/onboarding", "/settings", "/billing", "/studio", "/shop", "/admin"];
 
 // Refreshes the Supabase session cookie and sends signed-out users to /login.
 // Eligibility (age gate, onboarding) is checked in each page, not here, to

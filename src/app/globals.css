@@ -1,26 +1,52 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fff8f5;
+  --foreground: #2a1a1f;
+  --muted: #7a6168;
+  --card: #ffffff;
+  --border: #f1dfe2;
+  --accent: #d6336c;
+  --accent-soft: #fde8ef;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted: var(--muted);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #160e11;
+    --foreground: #f6eaee;
+    --muted: #b49aa2;
+    --card: #21161a;
+    --border: #3a2830;
+    --accent: #f06595;
+    --accent-soft: #3a1d29;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center rounded-full bg-accent px-5 py-2.5 font-medium text-white transition hover:opacity-90 disabled:opacity-50;
+}
+.btn-ghost {
+  @apply inline-flex items-center justify-center rounded-full border border-border px-5 py-2.5 font-medium transition hover:bg-accent-soft disabled:opacity-50;
+}
+.input {
+  @apply w-full rounded-xl border border-border bg-card px-4 py-2.5 outline-none focus:border-accent;
+}
+.card {
+  @apply rounded-2xl border border-border bg-card p-6;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { AppNav, BottomTabs } from "@/components/AppNav";
 import { Avatar } from "@/components/Avatar";
@@ -8,7 +9,7 @@ import { Paywall } from "@/components/Paywall";
 import { SupportCard } from "@/components/SupportCard";
 import type { AvatarConfig } from "@/lib/avatar/config";
 import type { ChatEvent } from "@/lib/chat/handleChat";
-import type { Plan } from "@/lib/plans";
+import type { Plan, RenewalNotice } from "@/lib/plans";
 
 export type { UiGift };
 
@@ -33,6 +34,7 @@ export function ChatClient(props: {
   plans: Plan[];
   gifts: UiGift[];
   coachAvailable: boolean;
+  renewal?: RenewalNotice | null;
 }) {
   const [messages, setMessages] = useState<UiMessage[]>(props.initialMessages);
   const [allowance, setAllowance] = useState<Allowance>(props.initialAllowance);
@@ -42,6 +44,7 @@ export function ChatClient(props: {
   const [notice, setNotice] = useState<string | null>(null);
   const [coach, setCoach] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [showRenewal, setShowRenewal] = useState(Boolean(props.renewal));
   const bottom = useRef<HTMLDivElement>(null);
 
   const locked = allowance.remaining <= 0;
@@ -151,6 +154,23 @@ export function ChatClient(props: {
         )}
       </header>
 
+      {showRenewal && props.renewal && !paywalled && (
+        <div className="flex items-center justify-between gap-3 border-b border-border bg-accent-soft px-4 py-2 text-sm" role="status">
+          <span>
+            {props.renewal.state === "ending"
+              ? `Your ${props.renewal.planName} plan ends ${
+                  props.renewal.daysLeft === 0 ? "today" : props.renewal.daysLeft === 1 ? "tomorrow" : `in ${props.renewal.daysLeft} days`
+                }. Plans don't renew automatically.`
+              : `Your ${props.renewal.planName} plan has ended.`}{" "}
+            <Link href="/pricing" className="font-semibold underline">
+              Renew
+            </Link>
+          </span>
+          <button onClick={() => setShowRenewal(false)} className="text-muted" aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      )}
       <main className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <p className="mt-10 text-center text-muted">Say hi to {props.character.name} 👋</p>

@@ -1,14 +1,14 @@
 # Heartline: AI companion app
 
 "A partner who helps you get ready for real love." An AI boyfriend or girlfriend who also coaches users on dating
-and relationships. Africa-first: Nigerian context, Pidgin support, Naira pricing via Paystack.
+and relationships. Africa-first: Nigerian context, Pidgin support, Naira pricing via Bachs (card or bank transfer).
 
 `Heartline` is a placeholder name; change it in `src/lib/brand.ts`.
 
 ## Stack
 
 Next.js 15 (App Router, TypeScript, Tailwind) · Supabase (Postgres, Auth, RLS) · Anthropic API behind a
-provider-agnostic wrapper (`src/lib/llm.ts`) · Paystack · Vercel.
+provider-agnostic wrapper (`src/lib/llm.ts`) · Bachs payments (Paystack kept as a fallback) · Vercel.
 
 ## Pricing and allowances
 
@@ -16,30 +16,40 @@ provider-agnostic wrapper (`src/lib/llm.ts`) · Paystack · Vercel.
 |---|---|---|---|
 | Free | ₦0 | none | 10 on signup day, then 3/day |
 | 2 Weeks | ₦1,500 | one-time pass (does not renew) | 60 |
-| Monthly | ₦2,500 | Paystack recurring subscription | 100 |
+| Monthly | ₦2,500 | one-time 30-day pass (does not renew) | 100 |
 | 6 Months / Yearly | ₦12,000 / ₦21,000 | seeded but `active = false` | 120 |
 
 * Prices, caps and features live in the `plans` table, so you can change them without a deploy.
 * Longer plans are always cheaper per day (₦107 → ₦83 → ₦66 → ₦58).
-* **Paystack has no 2-week billing interval.** That's why the 2-week plan is a pass: each payment adds 14 days and
-  passes stack. It also fits how many Nigerians pay (transfer/USSD, no saved card).
+* **Every plan is a pass.** Bachs can't bill Naira subscriptions yet (its subscriptions are USD-card only), so
+  each payment adds the plan's days and early renewals stack on top of the time left. Users can pay by Nigerian
+  card **or bank transfer**, which suits how many Nigerians pay. A banner in chat reminds users in the last 3 days
+  of a pass and for a week after it ends.
+* If Bachs enables NGN subscriptions on your account, the monthly plan can go back to auto-renewing; see
+  "Payment providers" below.
 * Every paid plan gets the same core features. Longer plans add bonuses (coins, exclusive items) instead of withholding
   core features.
 * Daily limits reset at midnight Africa/Lagos.
-* Turn on 6-month/yearly once you have about 60 days of retention data: set `active = true` and create the Paystack plans.
+* Turn on 6-month/yearly once you have about 60 days of retention data: set `active = true`.
 
 ## Setup
 
 1. **Install:** `npm install`
 2. **Supabase:** create a project, then run `supabase/migrations/0001_phase1.sql` and then
-   `0002_phase2.sql` in the SQL editor (or use `supabase db push`).
+   `0002_phase2.sql` and `0003_bachs.sql` in the SQL editor (or use `supabase db push`).
    * Auth → Providers: enable Email and Google.
    * Auth → URL configuration: add `http://localhost:3000/auth/callback` and your production `/auth/callback` URL.
-3. **Paystack:**
-   * Dashboard → Plans: create a **Monthly** plan at ₦2,500 (interval: monthly). Copy its plan code and run
-     `update plans set paystack_plan_code = 'PLN_xxx' where id = 'monthly';`.
-   * Settings → API Keys & Webhooks: set the webhook URL to `https://<your-domain>/api/paystack/webhook`.
-   * For local webhook testing, tunnel with e.g. `ngrok http 3000`.
+3. **Bachs** (sign up at https://app.bachs.io/signup; build in the sandbox, then go live by swapping keys):
+   * Developers → API keys: copy a sandbox secret key (`sk_sandbox_...`) into `BACHS_API_KEY`.
+   * Developers → Webhooks: add `https://<your-domain>/api/payments/bachs/webhook`, subscribed to
+     `collection.succeeded`. Copy its signing secret (`whsec_...`) into `BACHS_WEBHOOK_SECRET`.
+   * Make sure the NGN card and NGN bank transfer methods are enabled on your account.
+   * No products need creating: checkouts are created from the prices in the `plans` and `coin_packs` tables.
+   * Locally: Bachs refuses `localhost` return URLs, so set `NEXT_PUBLIC_APP_URL` to a public tunnel or deployment.
+     To receive webhooks locally, run `bachs listen --forward-to localhost:3000/api/payments/bachs/webhook
+     --events collection.succeeded` and use the secret the CLI prints.
+   * Going live: verify your account, switch to an `sk_live_` key with `BACHS_API_URL=https://api.bachs.io`, and
+     register the production webhook.
 4. **Env:** `cp .env.example .env.local` and fill in the values below.
 5. **Run:** `npm run dev`, then open http://localhost:3000.
 
@@ -47,7 +57,7 @@ provider-agnostic wrapper (`src/lib/llm.ts`) · Paystack · Vercel.
 
 | Variable | Where it comes from | Notes |
 |---|---|---|
-| `NEXT_PUBLIC_APP_URL` | your domain | Used to build the Paystack callback URL |
+| `NEXT_PUBLIC_APP_URL` | your domain | Payment return URLs. Must be public (Bachs refuses localhost) |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase → API | |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → API | Safe in the browser; RLS protects data |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → API | **Server only.** Bypasses RLS |
@@ -56,7 +66,11 @@ provider-agnostic wrapper (`src/lib/llm.ts`) · Paystack · Vercel.
 | `ANTHROPIC_API_KEY` | console.anthropic.com | |
 | `LLM_MODEL` | see Cost control | Default `claude-opus-5-5` |
 | `LLM_UTILITY_MODEL` | optional | Model for memory extraction. Defaults to `LLM_MODEL` |
-| `PAYSTACK_SECRET_KEY` | Paystack → API Keys | Also used to verify webhook signatures |
+| `PAYMENT_PROVIDER` | `bachs` or `paystack` | Default `bachs` |
+| `BACHS_API_URL` | Bachs docs | `https://sandbox-api.bachs.io` (default) or `https://api.bachs.io` for live |
+| `BACHS_API_KEY` | Bachs → API keys | **Server only.** `sk_sandbox_...` or `sk_live_...` |
+| `BACHS_WEBHOOK_SECRET` | Bachs → Webhooks | `whsec_...`, verifies `X-Bachs-Signature-V2` |
+| `PAYSTACK_SECRET_KEY` | Paystack → API Keys | Only if `PAYMENT_PROVIDER=paystack` |
 | `ADMIN_EMAILS` | you | Comma-separated emails that can open `/admin` |
 | `NGN_PER_USD` | current rate | Used to show AI costs in Naira on `/admin`. Default 1500 |
 
@@ -72,8 +86,9 @@ Covers the four required areas: the free message limit (`tests/freeLimit.test.ts
 
 Phase 2 tests: memory extraction and retrieval (`memory.test.ts`), gift triggers (`gifts.test.ts`), coin
 purchases and bonus coins (`coins.test.ts`), the wardrobe shop and avatar studio (`shop.test.ts`, which also checks
-that the catalogue matches the database seed), and the admin metrics (`admin.test.ts`). The core logic
-(`handleChat`, `handlePaystackWebhook`) takes its database and LLM as injected dependencies, so tests run against
+that the catalogue matches the database seed), and the admin metrics (`admin.test.ts`). Bachs payments (`bachs.test.ts`): signature checks including secret
+rotation and replay windows, kobo/decimal conversion, passes, coins, duplicate delivery and the renewal reminder.
+The core logic (`handleChat`, `handleBachsWebhook`, `handlePaystackWebhook`) takes its database and LLM as injected dependencies, so tests run against
 in-memory fakes with no network calls.
 
 ## How it works
@@ -88,20 +103,40 @@ in-memory fakes with no network calls.
   7. If the model call fails, give the message back to the user's allowance.
 * **Paywall:** the server returns 402 when a free user is out of messages and 429 when a subscriber hits the
   fair-use cap. The UI locks the input and shows the plans. The character's prompt forbids mentioning payments.
-* **Billing** (`src/lib/billing/handleWebhook.ts`):
-  * Handles `charge.success`, `subscription.create`, `invoice.payment_failed`, `subscription.not_renew` and
-    `subscription.disable`.
-  * Verifies the HMAC-SHA512 signature, checks the amount and currency, and applies each payment reference only once
-    (`payment_events`).
-  * `/billing/callback` also verifies the transaction directly with Paystack, so access starts even if the webhook is
-    slow.
+* **Billing** (`src/lib/billing/`):
+  * `/api/checkout` prices the plan or coin pack from the database and creates a hosted checkout. On Bachs that's a
+    raw-amount NGN checkout limited to Nigerian card and bank transfer, created with an `Idempotency-Key`.
+  * `/api/payments/bachs/webhook` verifies `X-Bachs-Signature-V2` (HMAC-SHA256, 5-minute replay window, secret
+    rotation supported) and handles `collection.succeeded`.
+  * Every provider's payments go through one function, `applyPayment`. It checks the amount and currency against
+    the database price and applies each payment only once (`payment_events`), whether it arrives by webhook,
+    redelivery, or the callback page.
+  * `/billing/callback` reads the payment from the provider directly, so access starts even if the webhook is slow.
+    Bank transfers can take a few minutes to confirm; the page says so.
 * **Safety:** crisis messages log a `safety_events` row (type only, no content), add a care instruction to the
   prompt, and show the helpline card. AI messages have a Report button.
 * **Privacy:**
   * RLS on every table; users can't edit their own DOB or blocked flag.
   * Chat content is AES-256-GCM encrypted by the app.
-  * "Delete my account" cancels the Paystack subscription and then deletes the auth user. Every table cascades from
+  * "Delete my account" cancels any Paystack subscription and then deletes the auth user. Every table cascades from
     `auth.users`, so all of the user's data is hard-deleted.
+
+## Payment providers
+
+`PAYMENT_PROVIDER` picks the gateway. Both feed the same `applyPayment`, so plans, coins, limits and the admin
+dashboard work the same either way.
+
+| | Bachs (default) | Paystack |
+|---|---|---|
+| NGN card | ✓ | ✓ |
+| NGN bank transfer | ✓ | ✓ |
+| NGN auto-renewing subscriptions | ✗ (USD cards only today) | ✓ |
+| Webhook route | `/api/payments/bachs/webhook` | `/api/paystack/webhook` |
+
+To auto-renew the monthly plan, either ask Bachs to enable NGN subscriptions on your account, or switch to Paystack:
+set `PAYMENT_PROVIDER=paystack`, create a ₦2,500 monthly plan in Paystack, then run
+`update plans set billing = 'recurring', paystack_plan_code = 'PLN_xxx' where id = 'monthly';`. The checkout route
+refuses to sell a recurring plan on a provider that can't renew it.
 
 ## Phase 2 features
 
@@ -182,7 +217,7 @@ the last 20 messages, prompt caching is on, and replies run at low effort.
 * **Age gate is self-declared.** A blocked minor can sign up again with a new email and a false DOB. Plug in an age
   verification provider later.
 * **Legal:** privacy and terms pages are placeholders for a lawyer to review (NDPA).
-* **Not yet tested end to end** against a live Supabase project and Paystack test mode. Both SQL migrations were
+* **Not yet tested end to end** against a live Supabase project and the Bachs sandbox. All three SQL migrations were
   run and checked on Postgres 16 with a stubbed `auth` schema (limits, RLS, coin ledger, purchases, cascading
   deletes).
 * **Payment records are deleted with the account.** Nigerian tax rules may require keeping financial records for

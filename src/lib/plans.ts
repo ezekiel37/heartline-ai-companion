@@ -54,8 +54,8 @@ export const DEFAULT_PLANS: Plan[] = [
     name: "Monthly",
     price_kobo: 250_000,
     duration_days: 30,
-    billing: "recurring",
-    paystack_plan_code: null, // set from PAYSTACK_PLAN_MONTHLY / plans table
+    billing: "pass", // Bachs can't auto-renew NGN plans yet; see migration 0003
+    paystack_plan_code: null,
     daily_message_cap: 100,
     bonus_coins: 150,
     features: ["chat", "memory", "avatar_studio", "wardrobe", "gifts", "bonus_coins"],
@@ -111,4 +111,25 @@ export function dailyAllowance(args: {
   }
   const firstDay = args.accountCreatedDate === args.today;
   return { tier: "free", limit: firstDay ? FREE_FIRST_DAY_MESSAGES : FREE_DAILY_MESSAGES };
+}
+
+export interface RenewalNotice {
+  state: "ending" | "ended";
+  planName: string;
+  daysLeft: number; // whole days left; negative once ended
+}
+
+const RENEWAL_WARNING_DAYS = 3;
+const ENDED_NOTICE_DAYS = 7;
+
+// Passes don't renew, so remind people before (and shortly after) access ends.
+// Shown in the app UI only; the character never mentions plans or payment.
+export function renewalNotice(sub: Subscription | null, plan: Plan | null, now: Date): RenewalNotice | null {
+  if (!sub?.current_period_end || !plan || plan.billing !== "pass") return null;
+  const msLeft = new Date(sub.current_period_end).getTime() - now.getTime();
+  const daysLeft = Math.floor(msLeft / 86_400_000); // whole days left; 0 = ends within a day
+  if (msLeft > 0 && sub.status !== "past_due") {
+    return daysLeft < RENEWAL_WARNING_DAYS ? { state: "ending", planName: plan.name, daysLeft } : null;
+  }
+  return -msLeft <= ENDED_NOTICE_DAYS * 86_400_000 ? { state: "ended", planName: plan.name, daysLeft } : null;
 }

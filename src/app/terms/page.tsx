@@ -19,8 +19,9 @@ export default function TermsPage() {
       </p>
       <h2>Plans and payments</h2>
       <p>
-        Prices are in Naira and shown before you pay. The 2-week plan is a one-time payment that does not renew. Monthly
-        plans renew automatically until cancelled; cancelling keeps access until the end of the paid period.
+        Prices are in Naira and shown before you pay. Plans are one-time payments that give access for the period
+        shown (for example 2 weeks or 30 days) and do not renew automatically. Buying again before a plan ends adds
+        the new period on top of the time you have left.
       </p>
       <h2>Changes</h2>
       <p>We may update these terms and will tell you about material changes.</p>

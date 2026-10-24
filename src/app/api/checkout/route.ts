@@ -1,4 +1,4 @@
-import { initializeTransaction } from "@/lib/billing/paystack";
+import { paymentProvider, startCheckout, type CheckoutRequest } from "@/lib/billing/provider";
 import { featuresFor } from "@/lib/features";
 import { loadSubscription } from "@/lib/deps";
 import { formatNaira, MAX_COIN_SPEND_KOBO_PER_DAY } from "@/lib/plans";
@@ -6,7 +6,8 @@ import { requireUser, supabaseAdmin } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-// Starts a Paystack checkout for a plan ({planId}) or a coin pack ({packId}).
+// Starts a hosted checkout (Bachs or Paystack, see PAYMENT_PROVIDER) for a
+// plan ({planId}) or a coin pack ({packId}). Prices always come from the database.
 export async function POST(req: Request) {
   const { user } = await requireUser();
   if (!user?.email) return Response.json({ error: "Not signed in" }, { status: 401 });
@@ -16,7 +17,7 @@ export async function POST(req: Request) {
   const origin = process.env.NEXT_PUBLIC_APP_URL ?? new URL(req.url).origin;
   const callbackUrl = `${origin}/billing/callback`;
 
-  let checkout: Parameters<typeof initializeTransaction>[0];
+  let checkout: CheckoutRequest;
 
   if (typeof body.packId === "string") {
     const { data: pack } = await db.from("coin_packs").select("*").eq("id", body.packId).eq("active", true).maybeSingle();
@@ -47,28 +48,31 @@ export async function POST(req: Request) {
       email: user.email,
       amountKobo: pack.price_kobo,
       callbackUrl,
+      cancelUrl: `${origin}/shop`,
       metadata: { user_id: user.id, kind: "coins", pack_id: pack.id },
     };
   } else {
     const { data: plan } = await db.from("plans").select("*").eq("id", body.planId).eq("active", true).maybeSingle();
     if (!plan) return Response.json({ error: "Unknown plan" }, { status: 400 });
-    if (plan.billing === "recurring" && !plan.paystack_plan_code) {
+    if (plan.billing === "recurring" && (paymentProvider() !== "paystack" || !plan.paystack_plan_code)) {
+      // Bachs can't auto-renew NGN plans; selling one would promise a renewal that never happens.
+      console.error(`plan ${plan.id} is recurring but the payment provider can't bill it`);
       return Response.json({ error: "Plan is not configured for billing yet" }, { status: 503 });
     }
     checkout = {
       email: user.email,
       amountKobo: plan.price_kobo,
-      planCode: plan.billing === "recurring" ? plan.paystack_plan_code : null,
+      paystackPlanCode: plan.billing === "recurring" ? plan.paystack_plan_code : null,
       callbackUrl,
+      cancelUrl: `${origin}/pricing`,
       metadata: { user_id: user.id, kind: "plan", plan_id: plan.id },
     };
   }
 
   try {
-    const tx = await initializeTransaction(checkout);
-    return Response.json({ url: tx.authorization_url });
+    return Response.json({ url: await startCheckout(checkout) });
   } catch (e) {
-    console.error("paystack initialize failed", e);
+    console.error("checkout start failed", e);
     return Response.json({ error: "Could not start payment. Please try again." }, { status: 502 });
   }
 }

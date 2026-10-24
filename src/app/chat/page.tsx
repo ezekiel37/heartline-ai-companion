@@ -2,7 +2,7 @@ import { loadPartnerState } from "@/lib/access";
 import { decrypt } from "@/lib/crypto";
 import { giftDeps } from "@/lib/deps";
 import { runGiftTriggers } from "@/lib/gifts/triggers";
-import { dailyAllowance, type Plan } from "@/lib/plans";
+import { dailyAllowance, renewalNotice, type Plan } from "@/lib/plans";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { appDate } from "@/lib/time";
 import { ChatClient, type UiGift, type UiMessage } from "./ChatClient";
@@ -54,6 +54,7 @@ export default async function ChatPage() {
       plans={(plans ?? []) as Plan[]}
       gifts={(gifts ?? []) as UiGift[]}
       coachAvailable={s.features.has("coach")}
+      renewal={renewalNotice(s.subscription?.subscription ?? null, s.subscription?.plan ?? null, now)}
     />
   );
 }

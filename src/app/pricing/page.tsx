@@ -17,7 +17,7 @@ export default async function PricingPage() {
       <h1 className="mt-4 text-3xl font-bold">Plans</h1>
       <p className="mt-2 text-muted">
         Free: {FREE_FIRST_DAY_MESSAGES} messages on your first day, then {FREE_DAILY_MESSAGES} a day. Paid plans unlock
-        everything below. Prices in Naira, paid securely with Paystack.
+        everything below. Prices in Naira. Pay by card or bank transfer.
       </p>
       <div className="mt-6">
         <Paywall plans={(plans ?? []) as Plan[]} compact={false} />

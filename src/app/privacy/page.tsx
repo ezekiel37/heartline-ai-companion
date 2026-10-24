@@ -11,7 +11,7 @@ export default function PrivacyPage() {
       <h2>What we collect</h2>
       <p>
         Your email address, date of birth, display name, language preference, the partner you create, your chat
-        messages, message counts, and payment status (we never see or store your card details; Paystack processes
+        messages, message counts, and payment status (we never see or store your card or bank details; our payment provider processes
         payments).
       </p>
       <h2>Why we use it</h2>

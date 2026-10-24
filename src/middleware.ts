@@ -33,5 +33,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/paystack/webhook).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/paystack/webhook|api/payments/).*)"],
 };

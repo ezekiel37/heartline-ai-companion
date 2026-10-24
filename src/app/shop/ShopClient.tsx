@@ -34,7 +34,7 @@ export function ShopClient(props: {
   async function buyPack(packId: string) {
     setBusy(packId);
     setMessage(null);
-    const res = await fetch("/api/paystack/initialize", {
+    const res = await fetch("/api/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ packId }),
@@ -92,7 +92,7 @@ export function ShopClient(props: {
         <div className="flex flex-wrap gap-2">
           {props.packs.map((p) => (
             <button key={p.id} className="btn-ghost" disabled={busy !== null} onClick={() => buyPack(p.id)}>
-              {busy === p.id ? "Opening Paystack…" : `${p.coins} coins · ${formatNaira(p.price_kobo)}`}
+              {busy === p.id ? "Opening checkout…" : `${p.coins} coins · ${formatNaira(p.price_kobo)}`}
             </button>
           ))}
         </div>

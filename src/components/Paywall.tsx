@@ -24,7 +24,7 @@ export function Paywall({ plans, compact = true }: { plans: Plan[]; compact?: bo
   async function choose(planId: string) {
     setBusy(planId);
     setError(null);
-    const res = await fetch("/api/paystack/initialize", {
+    const res = await fetch("/api/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ planId }),
@@ -88,7 +88,7 @@ export function Paywall({ plans, compact = true }: { plans: Plan[]; compact?: bo
                 </ul>
               )}
               <button className={`${isBest ? "btn" : "btn-ghost"} mt-auto`} disabled={busy !== null} onClick={() => choose(p.id)}>
-                {busy === p.id ? "Opening Paystack…" : `Choose ${p.name}`}
+                {busy === p.id ? "Opening checkout…" : `Choose ${p.name}`}
               </button>
             </div>
           );

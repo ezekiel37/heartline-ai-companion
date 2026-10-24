@@ -24,7 +24,7 @@ export interface Subscription {
   plan_id: string;
   status: SubscriptionStatus;
   current_period_end: string | null;
-  paystack_ref?: string | null;
+  payment_ref?: string | null;
   paystack_customer_code?: string | null;
   paystack_subscription_code?: string | null;
   paystack_email_token?: string | null;

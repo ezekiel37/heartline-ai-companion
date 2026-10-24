@@ -1,14 +1,16 @@
 import type { CoinPack, Plan, Subscription, SubscriptionStatus } from "../plans";
+import { decimalToKobo, verifyBachsSignature, type BachsCheckout, type BachsEvent } from "./bachs";
 import { verifySignature, type PaystackCharge, type PaystackEvent } from "./paystack";
 
-// Turns Paystack events into `subscriptions` rows. Pure apart from `deps`, so
-// it is unit-tested with in-memory fakes.
+// Turns payment-provider events into `subscriptions` rows. Pure apart from
+// `deps`, so it is unit-tested with in-memory fakes. Provider-specific parsing
+// lives in handlePaystackWebhook and handleBachsWebhook; both feed applyPayment.
 //
 // Two plan kinds:
-//  - pass:      one-off charge (e.g. 2 weeks). Paystack has no 2-week interval,
-//               so this plan never auto-renews; each charge extends access.
-//  - recurring: Paystack subscription (e.g. monthly). Renewals arrive as
-//               charge.success with a plan; failures as invoice.payment_failed.
+//  - pass:      one-off charge; each payment extends access by the plan's
+//               duration. All plans on Bachs, which can't bill NGN recurringly.
+//  - recurring: Paystack subscription. Renewals arrive as charge.success with
+//               a plan; failures as invoice.payment_failed.
 
 export interface WebhookDeps {
   now(): Date;
@@ -20,7 +22,7 @@ export interface WebhookDeps {
   upsertSubscription(sub: Subscription): Promise<void>;
   // Returns false if this key was already processed (idempotency).
   claimEvent(key: string, event: string): Promise<boolean>;
-  // Undo a claim when applying the event failed, so Paystack's retry can succeed.
+  // Undo a claim when applying the event failed, so the provider's retry can succeed.
   releaseEvent(key: string): Promise<void>;
   getCoinPack(id: string): Promise<CoinPack | null>;
   // Idempotent on `ref`.
@@ -30,7 +32,7 @@ export interface WebhookDeps {
 }
 
 export type WebhookOutcome =
-  | { status: 401; reason: "bad_signature" }
+  | { status: 400 | 401; reason: "bad_signature" }
   | { status: 400; reason: "bad_payload" }
   | { status: 200; reason: string };
 
@@ -67,11 +69,76 @@ export async function handlePaystackWebhook(
   }
 }
 
-interface ChargeMetadata {
+// Bachs: only collection.succeeded matters. Each checkout is one purchase,
+// so the checkout id is the payment reference. Bachs retries only 5xx/408/429,
+// so a bad signature gets 400 and everything we choose to ignore gets 200.
+const BACHS_PAID = new Set(["SUCCEEDED", "OVERPAID", "ACCEPTED"]);
+
+export async function handleBachsWebhook(
+  deps: WebhookDeps,
+  rawBody: string,
+  signatureV2: string | null,
+  secret: string,
+  nowSeconds?: number,
+): Promise<WebhookOutcome> {
+  if (!verifyBachsSignature(signatureV2, rawBody, secret, nowSeconds)) return { status: 400, reason: "bad_signature" };
+
+  let evt: BachsEvent;
+  try {
+    evt = JSON.parse(rawBody);
+  } catch {
+    return { status: 400, reason: "bad_payload" };
+  }
+  if (!evt?.type || !evt.data) return { status: 400, reason: "bad_payload" };
+  if (evt.type !== "collection.succeeded") return { status: 200, reason: "ignored" };
+
+  const d = evt.data as {
+    checkout_id?: string | null;
+    status?: string;
+    amount?: string;
+    currency?: string;
+    metadata?: ChargeMetadata | null;
+  };
+  // Deposits without a checkout (e.g. virtual accounts) aren't ours to fulfil.
+  if (!d.checkout_id) return { status: 200, reason: "no_checkout" };
+  if (!d.status || !BACHS_PAID.has(d.status)) return { status: 200, reason: "not_successful" };
+
+  const amountKobo = decimalToKobo(d.amount ?? "");
+  if (!Number.isFinite(amountKobo)) return { status: 400, reason: "bad_payload" };
+  return {
+    status: 200,
+    reason: await applyPayment(deps, {
+      reference: d.checkout_id,
+      amountKobo,
+      currency: d.currency ?? "",
+      metadata: d.metadata ?? {},
+    }),
+  };
+}
+
+// For the billing callback page, which reads the checkout from Bachs directly.
+export function paymentFromBachsCheckout(c: BachsCheckout): SuccessfulPayment | null {
+  if (c.status !== "completed" || c.payment_status !== "succeeded") return null;
+  const amountKobo = decimalToKobo(c.amount);
+  if (!Number.isFinite(amountKobo)) return null;
+  return { reference: c.checkout_id, amountKobo, currency: c.currency, metadata: (c.metadata ?? {}) as ChargeMetadata };
+}
+
+export interface ChargeMetadata {
   user_id?: string;
   plan_id?: string;
   kind?: "plan" | "coins";
   pack_id?: string;
+}
+
+// A successful one-time payment, in a shape every provider can be mapped to.
+export interface SuccessfulPayment {
+  reference: string; // provider's unique id for this payment: idempotency key and record
+  amountKobo: number;
+  currency: string;
+  metadata: ChargeMetadata; // set by our server when the checkout was created
+  customerCode?: string | null; // Paystack: links renewals to a user
+  planCode?: string | null; // Paystack: identifies the plan on renewals
 }
 
 function metadataOf(charge: PaystackCharge): ChargeMetadata {
@@ -86,29 +153,38 @@ function metadataOf(charge: PaystackCharge): ChargeMetadata {
   return charge.metadata;
 }
 
-// Shared by the webhook and the billing callback page (which verifies the
-// transaction directly so access is granted even if the webhook is delayed).
+// Paystack charge (webhook or transaction verify) → applyPayment.
 export async function applyCharge(deps: WebhookDeps, charge: PaystackCharge): Promise<string> {
   if (charge.status !== "success") return "not_successful";
-  if (charge.currency !== "NGN") return "wrong_currency";
+  return applyPayment(deps, {
+    reference: charge.reference,
+    amountKobo: charge.amount,
+    currency: charge.currency,
+    metadata: metadataOf(charge),
+    customerCode: charge.customer?.customer_code ?? null,
+    planCode: typeof charge.plan === "object" ? (charge.plan?.plan_code ?? null) : null,
+  });
+}
 
-  const meta = metadataOf(charge);
-  if (meta.kind === "coins") return applyCoinCharge(deps, charge, meta);
-  const planCode = typeof charge.plan === "object" ? charge.plan?.plan_code : undefined;
+// Grants what was paid for. Shared by every provider's webhook and by the
+// billing callback page (which verifies with the provider directly so access
+// starts even if the webhook is delayed). Safe to call twice for one payment.
+export async function applyPayment(deps: WebhookDeps, p: SuccessfulPayment): Promise<string> {
+  if (p.currency !== "NGN") return "wrong_currency";
+  const meta = p.metadata;
+  if (meta.kind === "coins") return applyCoinPayment(deps, p);
 
   let plan = meta.plan_id ? await deps.getPlanById(meta.plan_id) : null;
-  if (!plan && planCode) plan = await deps.getPlanByCode(planCode);
+  if (!plan && p.planCode) plan = await deps.getPlanByCode(p.planCode);
   if (!plan) return "unknown_plan";
-  if (charge.amount < plan.price_kobo) return "amount_mismatch";
+  if (p.amountKobo < plan.price_kobo) return "amount_mismatch";
 
   let userId = meta.user_id ?? null;
-  if (!userId && charge.customer?.customer_code) {
-    userId = await deps.findUserByCustomerCode(charge.customer.customer_code);
-  }
+  if (!userId && p.customerCode) userId = await deps.findUserByCustomerCode(p.customerCode);
   if (!userId) return "unknown_user";
 
-  const key = `charge:${charge.reference}`;
-  if (!(await deps.claimEvent(key, "charge.success"))) return "duplicate";
+  const key = `charge:${p.reference}`;
+  if (!(await deps.claimEvent(key, "payment.succeeded"))) return "duplicate";
 
   const now = deps.now();
   const existing = await deps.getSubscription(userId);
@@ -123,12 +199,12 @@ export async function applyCharge(deps: WebhookDeps, charge: PaystackCharge): Pr
       plan_id: plan.id,
       status: "active",
       current_period_end: periodEnd,
-      paystack_ref: charge.reference,
-      paystack_customer_code: charge.customer?.customer_code ?? existing?.paystack_customer_code ?? null,
+      payment_ref: p.reference,
+      paystack_customer_code: p.customerCode ?? existing?.paystack_customer_code ?? null,
     });
-    await deps.recordPayment({ userId, reference: charge.reference, kind: "plan", itemId: plan.id, amountKobo: charge.amount });
+    await deps.recordPayment({ userId, reference: p.reference, kind: "plan", itemId: plan.id, amountKobo: p.amountKobo });
     if (plan.bonus_coins) {
-      await deps.creditCoins(userId, plan.bonus_coins, `plan_bonus:${plan.id}`, `bonus:${charge.reference}`);
+      await deps.creditCoins(userId, plan.bonus_coins, `plan_bonus:${plan.id}`, `bonus:${p.reference}`);
     }
   } catch (e) {
     await deps.releaseEvent(key);
@@ -137,17 +213,18 @@ export async function applyCharge(deps: WebhookDeps, charge: PaystackCharge): Pr
   return "activated";
 }
 
-async function applyCoinCharge(deps: WebhookDeps, charge: PaystackCharge, meta: ChargeMetadata): Promise<string> {
+async function applyCoinPayment(deps: WebhookDeps, p: SuccessfulPayment): Promise<string> {
+  const meta = p.metadata;
   if (!meta.user_id || !meta.pack_id) return "bad_metadata";
   const pack = await deps.getCoinPack(meta.pack_id);
   if (!pack) return "unknown_pack";
-  if (charge.amount < pack.price_kobo) return "amount_mismatch";
+  if (p.amountKobo < pack.price_kobo) return "amount_mismatch";
 
-  const key = `charge:${charge.reference}`;
-  if (!(await deps.claimEvent(key, "charge.success"))) return "duplicate";
+  const key = `charge:${p.reference}`;
+  if (!(await deps.claimEvent(key, "payment.succeeded"))) return "duplicate";
   try {
-    await deps.creditCoins(meta.user_id, pack.coins, `pack:${pack.id}`, `pack:${charge.reference}`);
-    await deps.recordPayment({ userId: meta.user_id, reference: charge.reference, kind: "coins", itemId: pack.id, amountKobo: charge.amount });
+    await deps.creditCoins(meta.user_id, pack.coins, `pack:${pack.id}`, `pack:${p.reference}`);
+    await deps.recordPayment({ userId: meta.user_id, reference: p.reference, kind: "coins", itemId: pack.id, amountKobo: p.amountKobo });
   } catch (e) {
     await deps.releaseEvent(key);
     throw e;
